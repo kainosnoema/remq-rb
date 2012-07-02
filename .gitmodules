@@ -1,0 +1,3 @@
+[submodule "vendor/remq"]
+	path = vendor/remq
+	url = git@github.com:kainosnoema/remq.git
