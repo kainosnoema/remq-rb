@@ -37,8 +37,8 @@ describe Remq do
 
       msgs = subject.consume('events.things')
       msgs.should have(3).items
-      msgs['1'].should eql({ 'test' => 'one' })
-      msgs['3'].should eql({ 'test' => 'three' })
+      msgs[msgs.keys[0]].should eql({ 'test' => 'one' })
+      msgs[msgs.keys[2]].should eql({ 'test' => 'three' })
     end
 
     it "limits the messages returned to value given in the :limit option" do
@@ -48,9 +48,9 @@ describe Remq do
 
       msgs = subject.consume('events.things', limit: 2)
       msgs.should have(2).items
-      msgs['1'].should eql({ 'test' => 'one' })
-      msgs['2'].should eql({ 'test' => 'two' })
-      msgs['3'].should be_nil
+      msgs[msgs.keys[0]].should eql({ 'test' => 'one' })
+      msgs[msgs.keys[1]].should eql({ 'test' => 'two' })
+      msgs[msgs.keys[2]].should be_nil
     end
 
     it "returns messages published since the id given in the :cursor option" do
@@ -60,9 +60,8 @@ describe Remq do
 
       msgs = subject.consume('events.things', cursor: cursor)
       msgs.should have(2).items
-      msgs['1'].should be_nil
-      msgs['2'].should eql({ 'test' => 'two' })
-      msgs['3'].should eql({ 'test' => 'three' })
+      msgs[msgs.keys[0]].should eql({ 'test' => 'two' })
+      msgs[msgs.keys[1]].should eql({ 'test' => 'three' })
     end
   end
 end

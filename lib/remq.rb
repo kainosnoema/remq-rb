@@ -14,7 +14,8 @@ class Remq
 
   def publish(channel, message)
     channel = channel.join('.') if channel.is_a?(Array)
-    id = eval_script(:publish, namespace, channel, coder.encode(message))
+    msg, utc_seconds = coder.encode(message), Time.now.to_i
+    id = eval_script(:publish, namespace, channel, msg, utc_seconds)
     id.nil? ? nil : id.to_s
   end
 
