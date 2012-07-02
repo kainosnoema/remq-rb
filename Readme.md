@@ -4,6 +4,12 @@ A Ruby client library for [Remq](https://github.com/kainosnoema/remq), a [Redis]
 
 NOTE: In early-stage development, API not locked.
 
+## Installation
+
+``` sh
+gem install remq --pre
+```
+
 ## Usage
 
 **Producer:**
