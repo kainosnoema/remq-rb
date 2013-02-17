@@ -120,7 +120,7 @@ class Remq
   #
   # @return [Remq] self
   def on(event, listener=nil, &block)
-    listener = proc || block
+    listener ||= block
     unless listener.respond_to?(:call)
       raise ArgumentError.new('Listener must respond to #call')
     end
