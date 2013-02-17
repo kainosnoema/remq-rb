@@ -15,7 +15,8 @@ class Remq
 
   include MonitorMixin
 
-  attr :redis, :predis
+  attr :redis
+  attr :predis
 
   # Create a `Remq` client with the given `options`, which are passed to redis.
   #
