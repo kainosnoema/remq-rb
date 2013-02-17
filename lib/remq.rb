@@ -1,52 +1,154 @@
+require 'monitor'
 require 'redis'
 require 'remq/script'
-require 'remq/multi_json_coder'
 
 class Remq
+  Message = Struct.new(:channel, :id, :body)
 
-  attr :redis, :namespace, :scripts, :coder
+  def Message.parse(raw)
+    header, body = raw.split("\n", 2)
+    channel, id = header.split('@', 2)
+    new(channel, id.to_i, body)
+  end
+
+  LIMIT = 1000
+
+  include MonitorMixin
+
+  attr :redis, :predis
 
   def initialize(options = {})
-    @redis = options[:redis] || Redis.new(options)
-    @namespace = 'remq'
-    @scripts = {}
+    @redis     = Redis.new(options)
+    @predis    = Redis.new(options) # seperate connection for pub/sub
+    @listeners = Hash.new { |h, k| h[k] = [] }
+
+    super() # Monitor#initialize
   end
 
   def publish(channel, message)
-    channel = channel.join('.') if channel.is_a?(Array)
-    msg, utc_seconds = coder.encode(message), Time.now.to_i
-    id = eval_script(:publish, namespace, channel, msg, utc_seconds)
-    id.nil? ? nil : id.to_s
+    synchronize do
+      id = call(:publish, channel, message)
+      id && id.to_i
+    end
   end
 
-  def consume(channel, options = {})
-    cursor, limit = options[:cursor] || 0, options[:limit] || 1000
-    msgs_ids = eval_script(:consume, namespace, channel, cursor, limit)
-    msgs = {}
-    msgs_ids.each_index { |i|
-      if i % 2 == 0
-        msgs[msgs_ids[i+1]] = coder.decode(msgs_ids[i])
+  def subscribe(pattern, options = {}, &block)
+    synchronize do
+      return if @subscription
+
+      on(:message, &block) if block
+
+      if cursor = options[:from_id]
+        @subscription = _subscribe_from_cursor(pattern, cursor)
+      else
+        @subscription = _subscribe_to_pubsub(pattern)
       end
-    }
-    msgs
+    end
   end
 
-  def coder
-    @coder ||= MultiJsonCoder.new
+  def unsubscribe
+    synchronize do
+      return unless @subscription
+      @subscription.exit
+      @subscription = nil
+    end
+  end
+
+  def consume(pattern, options = {})
+    synchronize do
+      cursor, limit = options.fetch(:cursor, 0), options.fetch(:limit, LIMIT)
+      msgs = call(:consume, pattern, cursor, limit)
+      msgs.map { |msg| _handle_raw_message(msg) }
+    end
+  end
+
+  def on(event, proc=nil, &block)
+    listener = proc || block
+    unless listener.respond_to?(:call)
+      raise ArgumentError.new('Listener must respond to #call')
+    end
+
+    synchronize do
+      @listeners[event.to_sym] << listener
+    end
+
+    self
+  end
+
+  def off(event, listener)
+    synchronize do
+      @listeners[event.to_sym].delete(listener)
+    end
+
+    self
+  end
+
+  def key(*args)
+    (['remq'] + args).join(':')
+  end
+
+  def inspect
+    "#<Remq client v#{Remq::VERSION} for #{redis.client.id}>"
   end
 
   protected
 
-    def eval_script(name, *args)
-      script(name).eval(@redis, *args)
+  def call(name, *args)
+    synchronize do
+      script(name).eval(redis, *args)
+    end
+  end
+
+  def emit(event, *args)
+    synchronize do
+      @listeners[event.to_sym].each { |listener| listener.call(*args) }
+    end
+  end
+
+  def script(name)
+    synchronize do
+      (@scripts ||= {})[name.to_sym] ||= begin
+        path = "../vendor/remq/scripts/#{name}.lua"
+        Script.new(File.read(File.expand_path(path, File.dirname(__FILE__))))
+      end
+    end
+  end
+
+  private
+
+  def _subscribe_from_cursor(pattern, cursor)
+    begin
+      msgs = consume(pattern, { cursor: cursor })
+      cursor = msgs.last.id unless msgs.empty?
+    end while msgs.length == LIMIT
+
+    _subscribe_to_pubsub(pattern)
+  end
+
+  def _subscribe_to_pubsub(pattern)
+    subscription = nil
+
+    Thread.new do
+      begin
+        predis.client.connect
+        predis.psubscribe(key('channel', pattern)) do |on|
+          on.psubscribe { subscription = Thread.current }
+          on.pmessage { |_, _, msg| _handle_raw_message(msg) }
+        end
+      rescue => e
+        Thread.main.raise e
+      end
     end
 
-    def script(name)
-      @scripts[name.to_sym] ||= Script.new(File.read(script_path(name)))
-    end
+    Thread.pass while !subscription
 
-    def script_path(name)
-      File.expand_path("../vendor/remq/scripts/#{name}.lua", File.dirname(__FILE__))
-    end
+    subscription
+  end
+
+  def _handle_raw_message(raw)
+    msg = Message.parse raw
+    emit(:message, msg.channel, msg)
+    msg
+  end
 
 end

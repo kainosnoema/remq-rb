@@ -16,19 +16,17 @@ Gem::Specification.new do |s|
   s.test_files        = `git ls-files -- {test,spec,features}/*`.split("\n")
 
   s.add_dependency    "redis",      "~> 3.0.1"
-  s.add_dependency    "multi_json", "~> 1.0"
 
   s.add_development_dependency "rake"
   s.add_development_dependency "rspec", "~> 2.6"
 
   s.description = <<description
-    Remq is a Redis-based protocol for building fast, persistent
-    pub/sub message queues.
+    Remq is a Redis-based protocol for building fast, durable message queues.
 
     The Remq protocol is defined by a collection of Lua scripts
     (located at https://github.com/kainosnoema/remq) which effectively
     turn Redis into a capable message queue broker for fast inter-service
     communication. The Remq Ruby client library is built on top of these
-    scripts, making it easy to build fast, persisted pub/sub message queues.
+    scripts, making it easy to build fast, durable message queues.
 description
 end

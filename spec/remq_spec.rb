@@ -1,67 +1,93 @@
 require 'remq'
 
+RSpec::Matchers.define :be_ordered_from do |cursor|
+  cursor += 1
+  match do |actual|
+    actual.each_with_index.map { |msg, i| msg.id == cursor + i }.all?
+  end
+end
+
 describe Remq do
+  subject { Remq.new(db: 4) }
 
-  before :all do
-    subject { Remq.new(db: 4).tap { |r| r.redis.flushdb } }
+  let(:channel) { 'events.things' }
+
+  before { subject.redis.flushdb }
+
+  def publish n, remq = subject
+    (1..n).map { |i| remq.publish(channel, "foo #{i}") }
   end
 
-  after :each do
-    subject.redis.flushdb
+  def expect_n n, msgs, at = 0
+    msgs.should have(n).items
+    msgs.each_with_index { |msg, i| msg.body.should eql("foo #{at + i + 1}") }
   end
 
-  context "class" do
-    describe ".new" do
-      it "creates a Redis client when options hash missing" do
-        Remq.new.redis.should be_a(Redis)
-      end
-
-      it "takes a Redis client as an option" do
-        Remq.new(redis: (redis = Redis.new)).redis.should eql redis
-      end
+  describe '#publish' do
+    it 'publishes a message to the given channel and returns an id' do
+      id = subject.publish(channel, 'foo 1')
+      id.should be_a Integer
     end
   end
 
-  describe ".publish" do
-    it "publishes a message to the given channel and returns an id" do
-      id = subject.publish('events.things', { test: 'one' })
-      id.should be_a String
-    end
-  end
+  describe '#subscribe' do
+    let(:producer) { Remq.new(db: 4) }
 
-  describe ".consume" do
-    it "consumes messages published to the given channel" do
-      subject.publish('events.things', { 'test' => 'one' })
-      subject.publish('events.things', { 'test' => 'two' })
-      subject.publish('events.things', { 'test' => 'three' })
+    it 'receives messages on a separate thread' do
+      msgs = []
+      thread = subject.subscribe(channel) do |channel, msg|
+        msgs << msg
+        subject.unsubscribe if msgs.length == 3
+      end
 
-      msgs = subject.consume('events.things')
+      publish 3, producer
+
+      thread.join(1)
+
       msgs.should have(3).items
-      msgs[msgs.keys[0]].should eql({ 'test' => 'one' })
-      msgs[msgs.keys[2]].should eql({ 'test' => 'three' })
+      msgs.should be_ordered_from 0
     end
 
-    it "limits the messages returned to value given in the :limit option" do
-      subject.publish('events.things', { 'test' => 'one' })
-      subject.publish('events.things', { 'test' => 'two' })
-      subject.publish('events.things', { 'test' => 'three' })
+    context 'with :from_id option' do
+      it 'catches up to pub/sub from cursor using consume' do
+        publish 3, producer
 
-      msgs = subject.consume('events.things', limit: 2)
-      msgs.should have(2).items
-      msgs[msgs.keys[0]].should eql({ 'test' => 'one' })
-      msgs[msgs.keys[1]].should eql({ 'test' => 'two' })
-      msgs[msgs.keys[2]].should be_nil
+        msgs = []
+        thread = subject.subscribe(channel, from_id: 0) do |channel, msg|
+          msgs << msg
+          subject.unsubscribe if msgs.length == 6
+        end
+
+        publish 3, producer
+
+        thread.join(1)
+
+        msgs.should have(6).items
+        msgs.should be_ordered_from 0
+      end
+    end
+  end
+
+  describe '#consume' do
+    it 'consumes messages published to the given channel' do
+      publish 3
+      msgs = subject.consume(channel)
+      msgs.should have(3).items
+      msgs.should be_ordered_from 0
     end
 
-    it "returns messages published since the id given in the :cursor option" do
-      cursor = subject.publish('events.things', { 'test' => 'one' })
-      subject.publish('events.things', { 'test' => 'two' })
-      subject.publish('events.things', { 'test' => 'three' })
-
-      msgs = subject.consume('events.things', cursor: cursor)
+    it 'limits the messages returned to value given in the :limit option' do
+      publish 3
+      msgs = subject.consume(channel, limit: 2)
       msgs.should have(2).items
-      msgs[msgs.keys[0]].should eql({ 'test' => 'two' })
-      msgs[msgs.keys[1]].should eql({ 'test' => 'three' })
+      msgs.should be_ordered_from 0
+    end
+
+    it 'returns messages published since the id given in the :cursor option' do
+      cursor = publish(3).first
+      msgs = subject.consume(channel, cursor: cursor)
+      msgs.should have(2).items
+      msgs.should be_ordered_from cursor
     end
   end
 end
