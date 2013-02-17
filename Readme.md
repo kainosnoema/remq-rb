@@ -22,11 +22,11 @@ gem install remq
 require 'json'
 require 'remq'
 
-remq = Remq.new
+$remq = Remq.new
 
 message = { event: 'signup', account_id: 694 }
 
-id = remq.publish('events.accounts', JSON.dump(message))
+id = $remq.publish('events.accounts', JSON.dump(message))
 ```
 
 **Consumer:**
@@ -35,18 +35,18 @@ id = remq.publish('events.accounts', JSON.dump(message))
 require 'json'
 require 'remq'
 
-remq = Remq.new
+$remq = Remq.new
 
-last_id_key = remq.key('cursor', 'consumer-1')
-last_id = remq.redis.get(last_id_key) || 0
+last_id_key = $remq.key('cursor', 'consumer-1')
+last_id = $remq.redis.get(last_id_key) || 0
 
-remq.subscribe('events.*', from_id: last_id) do |channel, message|
+$remq.subscribe('events.*', from_id: last_id) do |channel, message|
   last_id = message.id
 
   # by persisting the last_id every 10 messages, a maximum of
   # 10 messages will be replayed in the case of consumer failure
   if last_id % 10 == 0
-    remq.redis.set(last_id_key, last_id)
+    $remq.redis.set(last_id_key, last_id)
   end
 
   message.body = JSON.parse(message.body)
