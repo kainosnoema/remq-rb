@@ -1,8 +1,8 @@
 # Remq-rb
 
-A Ruby client library for [Remq](https://github.com/kainosnoema/remq),
-a [Redis](http://redis.io)-based protocol for building fast, durable
-message queues.
+A Ruby client for [Remq](https://github.com/kainosnoema/remq), a
+[Redis](http://redis.io)-based protocol for building fast, durable message
+queues.
 
 NOTE: In early-stage development, API not stable. If you've used a previous
 version, you'll most likely have to clear all previously published messages

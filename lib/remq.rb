@@ -17,6 +17,9 @@ class Remq
 
   attr :redis, :predis
 
+  # Create a `Remq` client with the given `options`, which are passed to redis.
+  #
+  # @param [Hash] options
   def initialize(options = {})
     @redis     = Redis.new(options)
     @predis    = Redis.new(options) # seperate connection for pub/sub
@@ -25,6 +28,14 @@ class Remq
     super() # Monitor#initialize
   end
 
+  # Publish a `message` to the given `channel`. The `message` must be a string,
+  # but objects can easily be serialized using JSON, etc. The id of the
+  # published message will be returned as an integer.
+  #
+  # @param [String] channel
+  # @param [String] message
+  #
+  # @return [Integer] id
   def publish(channel, message)
     synchronize do
       id = call(:publish, channel, message)
@@ -32,6 +43,22 @@ class Remq
     end
   end
 
+  # Subscribe to the channels matching given `pattern`. If no initial `from_id`
+  # is provided, Remq subscribes using vanilla Redis pub/sub. Any Redis pub/sub
+  # pattern will work. If `from_id` is provided, Remq replays messages after the
+  # given id until its caught up and able to switch to pub/sub.
+  #
+  # Remq-rb subscribes to pub/sub on another thread, which is returned so you
+  # can handle it and call `Thread#join` when ready to block.
+  #
+  # @param [String] pattern
+  # @param [Hash] options
+  #   - `:from_id => Integer`: The message id to replay from (usually the last)
+  #
+  # @yield a block to add as a listener to the `message` event
+  # @yieldparam [Remq::Message] received message
+  #
+  # @return [Thread] thread where messages will be received
   def subscribe(pattern, options = {}, &block)
     synchronize do
       return if @subscription
@@ -48,6 +75,7 @@ class Remq
     end
   end
 
+  # Unsubscribe. No more `message` events will be emitted after this is called.
   def unsubscribe
     synchronize do
       return unless @subscription
@@ -56,6 +84,16 @@ class Remq
     end
   end
 
+  # Consume persisted messages from channels matching the given `pattern`,
+  # starting with the `cursor` if provided, or the first message. `limit`
+  # determines how many messages will be return each time `consume` is called.
+  #
+  # @param [String] pattern
+  # @param [Hash] options
+  #   - `:cursor => Integer`: id of the first message to return
+  #   - `:limit => Integer`: maximum number of messages to return
+  #
+  # @return [Array<Remq::Message>] array of parsed messages
   def consume(pattern, options = {})
     synchronize do
       cursor, limit = options.fetch(:cursor, 0), options.fetch(:limit, LIMIT)
@@ -64,7 +102,23 @@ class Remq
     end
   end
 
-  def on(event, proc=nil, &block)
+  # Forcibly close the connections to the Redis server.
+  def quit
+    synchronize do
+      redis.quit
+      predis.quit
+    end
+  end
+
+  # Add a listener to the given event.
+  #
+  # @param [String|Symbol] event
+  # @param [Proc] listener
+  #
+  # @yield a block to be called when the event is emitted
+  #
+  # @return [Remq] self
+  def on(event, listener=nil, &block)
     listener = proc || block
     unless listener.respond_to?(:call)
       raise ArgumentError.new('Listener must respond to #call')
@@ -77,6 +131,12 @@ class Remq
     self
   end
 
+  # Remove a listener from the given event.
+  #
+  # @param [String|Symbol] event
+  # @param [Proc] listener
+  #
+  # @return [Remq] self
   def off(event, listener)
     synchronize do
       @listeners[event.to_sym].delete(listener)
@@ -85,6 +145,12 @@ class Remq
     self
   end
 
+  # Build a key from the given `name` and `channel`.
+  #
+  # @param [String] name
+  # @param [String] channel
+  #
+  # @return [String] key
   def key(*args)
     (['remq'] + args).join(':')
   end
