@@ -38,6 +38,8 @@ class Remq
 
       on(:message, &block) if block
 
+      @subscription = true
+
       if cursor = options[:from_id]
         @subscription = _subscribe_from_cursor(pattern, cursor)
       else
@@ -49,7 +51,7 @@ class Remq
   def unsubscribe
     synchronize do
       return unless @subscription
-      @subscription.exit
+      @subscription.exit if @subscription.is_a?(Thread)
       @subscription = nil
     end
   end
@@ -126,13 +128,13 @@ class Remq
   end
 
   def _subscribe_to_pubsub(pattern)
-    subscription = nil
+    subscribed_thread = nil
 
     Thread.new do
       begin
         predis.client.connect
         predis.psubscribe(key('channel', pattern)) do |on|
-          on.psubscribe { subscription = Thread.current }
+          on.psubscribe { subscribed_thread = Thread.current }
           on.pmessage { |_, _, msg| _handle_raw_message(msg) }
         end
       rescue => e
@@ -140,14 +142,14 @@ class Remq
       end
     end
 
-    Thread.pass while !subscription
+    Thread.pass while !subscribed_thread
 
-    subscription
+    subscribed_thread
   end
 
   def _handle_raw_message(raw)
     msg = Message.parse raw
-    emit(:message, msg.channel, msg)
+    emit(:message, msg.channel, msg) if @subscription
     msg
   end
 

@@ -42,27 +42,42 @@ describe Remq do
 
       publish 3, producer
 
-      thread.join(1)
+      thread.join(0.01)
 
       msgs.should have(3).items
       msgs.should be_ordered_from 0
     end
 
     context 'with :from_id option' do
-      it 'catches up to pub/sub from cursor using consume' do
+      it 'replays any missed messages' do
         publish 3, producer
 
         msgs = []
         thread = subject.subscribe(channel, from_id: 0) do |channel, msg|
           msgs << msg
-          subject.unsubscribe if msgs.length == 6
+          subject.unsubscribe if msgs.length == 3
         end
 
-        publish 3, producer
+        thread.join(0.01)
 
-        thread.join(1)
+        msgs.should have(3).items
+        msgs.should be_ordered_from 0
+      end
 
-        msgs.should have(6).items
+      it 'doesn\'t miss or repeat when switching to pub/sub' do
+        publish 100, producer
+
+        msgs = []
+        thread = subject.subscribe(channel, from_id: 0) do |channel, msg|
+          msgs << msg
+          subject.unsubscribe if msgs.length == 200
+        end
+
+        publish 100, producer
+
+        thread.join(0.1)
+
+        msgs.should have(200).items
         msgs.should be_ordered_from 0
       end
     end
