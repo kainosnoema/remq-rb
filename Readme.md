@@ -11,7 +11,7 @@ in order to upgrade to the latest version.
 ## Installation
 
 ``` sh
-gem install remq --pre
+gem install remq
 ```
 
 ## Usage
