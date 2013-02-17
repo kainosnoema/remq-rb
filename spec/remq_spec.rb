@@ -8,7 +8,7 @@ RSpec::Matchers.define :be_ordered_from do |cursor|
 end
 
 describe Remq do
-  subject { Remq.new(db: 4) }
+  subject { Remq.new(:db => 4) }
 
   let(:channel) { 'events.things' }
 
@@ -31,7 +31,7 @@ describe Remq do
   end
 
   describe '#subscribe' do
-    let(:producer) { Remq.new(db: 4) }
+    let(:producer) { Remq.new(:db => 4) }
 
     it 'receives messages on a separate thread' do
       msgs = []
@@ -53,7 +53,7 @@ describe Remq do
         publish 3, producer
 
         msgs = []
-        thread = subject.subscribe(channel, from_id: 0) do |channel, msg|
+        thread = subject.subscribe(channel, :from_id => 0) do |channel, msg|
           msgs << msg
           subject.unsubscribe if msgs.length == 3
         end
@@ -68,7 +68,7 @@ describe Remq do
         publish 100, producer
 
         msgs = []
-        thread = subject.subscribe(channel, from_id: 0) do |channel, msg|
+        thread = subject.subscribe(channel, :from_id => 0) do |channel, msg|
           msgs << msg
           subject.unsubscribe if msgs.length == 200
         end
@@ -93,14 +93,14 @@ describe Remq do
 
     it 'limits the messages returned to value given in the :limit option' do
       publish 3
-      msgs = subject.consume(channel, limit: 2)
+      msgs = subject.consume(channel, :limit => 2)
       msgs.should have(2).items
       msgs.should be_ordered_from 0
     end
 
     it 'returns messages published since the id given in the :cursor option' do
       cursor = publish(3).first
-      msgs = subject.consume(channel, cursor: cursor)
+      msgs = subject.consume(channel, :cursor => cursor)
       msgs.should have(2).items
       msgs.should be_ordered_from cursor
     end

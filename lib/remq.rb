@@ -186,7 +186,7 @@ class Remq
 
   def _subscribe_from_cursor(pattern, cursor)
     begin
-      msgs = consume(pattern, { cursor: cursor })
+      msgs = consume(pattern, { :cursor => cursor })
       cursor = msgs.last.id unless msgs.empty?
     end while msgs.length == LIMIT
 
