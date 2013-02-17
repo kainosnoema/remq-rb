@@ -1,12 +1,15 @@
-# Remq-rb
+# remq-rb [![Build Status][travis-image]][travis-link]
+
+[travis-image]: https://secure.travis-ci.org/kainosnoema/remq-rb.png?branch=master
+[travis-link]: http://travis-ci.org/kainosnoema/remq-rb
 
 A Ruby client for [Remq](https://github.com/kainosnoema/remq), a
 [Redis](http://redis.io)-based protocol for building fast, durable message
 queues.
 
-NOTE: In early-stage development, API not stable. If you've used a previous
-version, you'll most likely have to clear all previously published messages
-in order to upgrade to the latest version.
+**WARNING**: In early-stage development, API not stable. If you've used a
+previous version, you'll most likely have to clear all previously published
+messages in order to upgrade to the latest version.
 
 ## Installation
 
